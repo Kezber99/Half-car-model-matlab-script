@@ -31,12 +31,16 @@ w_e = 0.2;          % Unsprung width extension                  [m]
 l_win        = 5;   % Length window analysis                    [m]
 l_win_maring = 0.3; % Length window margin at the begining      [m]
 
+% Vehicle speed
+vel = 10;                          % Longitudinal speed [m/s]
+assert(isscalar(vel) && isfinite(vel) && vel > 0, ...
+    'vel must be a finite, positive scalar.');
+
 % Video
 playback_speed = 0.1;               % Speed of playback
-tF      = 1;                        % Final time                [s]
+tF      = 1;                        % Minimum simulation duration [s]
 fR      = 30/playback_speed;        % Frame rate                [fps]
 dt      = 1/fR;                     % Time resolution           [s]
-time    = linspace(0,tF,tF*fR);     % Time                      [s]
 
 %% Road
 % Stretch 1
@@ -44,15 +48,74 @@ x_r_1_total = 5;        % Distance of the first stretch             [m]
 dx_r_1 = 0.1;           % resolution                                [m]
 x_r_1 = 0:dx_r_1:x_r_1_total;
 z_r_1 = zeros(1,length(x_r_1));
-% Stretch 2
-R_r = 0.2;              % Radius                                    [m]
-th_r = 0:0.01:pi;
-x_r_2 = -R_r*cos(th_r) + x_r_1_total+R_r;
-z_r_2 = R_r*sin(th_r);
+% Stretch 2: single bump or consecutive bumps
+consecutive_bumps = "no";          % "yes" enables the lists below
+bump_height = 0.2;                 % Single bump height [m]
+bump_width  = 0.4;                 % Single bump width along road [m]
+% With consecutive_bumps = "yes", the lists below define three bumps.
+% Add or remove entries to change the number of bumps: each bump needs
+% one height and one width, and N bumps need N-1 gaps between them.
+% Example for four bumps:
+% bump_heights = [0.2 0.1 0.15 0.25];
+% bump_widths  = [0.4 0.6 0.5 0.8];
+% bump_gaps    = [1.0 1.5 1.0];
+bump_heights = [0.2 0.1 0.15];      % Consecutive heights [m], one per bump
+bump_widths  = [0.4 0.6 0.5];       % Consecutive widths [m], one per bump
+bump_gaps    = [1.0 1.5];           % Flat distance between bumps [m]
+                                  % N bumps require N-1 gaps; [] for N=1
+assert(isscalar(consecutive_bumps) && ...
+    any(strcmpi(consecutive_bumps, {'yes','no'})), ...
+    'consecutive_bumps must be "yes" or "no".');
+if strcmpi(consecutive_bumps, 'yes')
+    heights = bump_heights;
+    widths = bump_widths;
+    gaps = bump_gaps;
+else
+    assert(isscalar(bump_height) && isscalar(bump_width), ...
+        'Single bump height and width must be scalars.');
+    heights = bump_height;
+    widths = bump_width;
+    gaps = [];
+end
+assert(isvector(heights) && ~isempty(heights) && ...
+    all(isfinite(heights(:))) && all(heights(:) >= 0), ...
+    'Bump heights must be a nonempty vector of finite, nonnegative values.');
+assert(isvector(widths) && numel(widths) == numel(heights) && ...
+    all(isfinite(widths(:))) && all(widths(:) > 0), ...
+    'Provide one finite, positive width for each bump.');
+assert((isempty(gaps) || isvector(gaps)) && ...
+    numel(gaps) == numel(heights)-1 && ...
+    all(isfinite(gaps(:))) && all(gaps(:) >= 0), ...
+    'Provide N-1 finite, nonnegative gaps for N bumps.');
+
+% Half-ellipse profiles with independent height and width.
+th_r = linspace(0,pi,315);
+x_r_2 = x_r_1_total;
+z_r_2 = 0;
+for bump_index = 1:numel(heights)
+    if bump_index > 1 && gaps(bump_index-1) > 0
+        gap_start = x_r_2(end);
+        gap_points = max(2, ceil(gaps(bump_index-1)/dx_r_1)+1);
+        gap_x = linspace(gap_start, gap_start+gaps(bump_index-1), gap_points);
+        x_r_2 = [x_r_2 gap_x(2:end)];
+        z_r_2 = [z_r_2 zeros(1,gap_points-1)];
+    end
+    bump_x = x_r_2(end) + (widths(bump_index)/2)*(1-cos(th_r));
+    bump_z = heights(bump_index)*sin(th_r);
+    bump_z([1 end]) = 0;
+    x_r_2 = [x_r_2 bump_x(2:end)];
+    z_r_2 = [z_r_2 bump_z(2:end)];
+end
+% Let the rear axle clear the final bump, then simulate one second more.
+tF = max(tF, x_r_2(end)/vel + 1);
+time = linspace(0,tF,ceil(tF*fR)+1);
 % Stretch 3
 x_r_3_total = 15;       % Distance of the last stretch              [m]
 dx_r_2 = 0.1;           % resolution                                [m]
-x_r_3 = x_r_1_total+2*R_r:dx_r_2:x_r_1_total+2*R_r+x_r_3_total;
+% Extend the flat road to cover both axles throughout the simulation.
+x_r_3_total = max(x_r_3_total, vel*tF+a1+a2-x_r_2(end));
+x_r_3 = linspace(x_r_2(end), x_r_2(end)+x_r_3_total, ...
+    ceil(x_r_3_total/dx_r_2)+1);
 z_r_3 = zeros(1,length(x_r_3));
 
 % Concatenating 
@@ -91,7 +154,7 @@ M = [   m   0   0   0   ;
         0   0   m1  0   ;
         0   0   0   m2  ];
 C = [   c1+c2           a2*c2-a1*c1         -c1         -c2     ;
-        a2*c2-a1*c2     c1*a1^2+c2*a2^2     a1*c1       -a2*c2  ;
+        a2*c2-a1*c1     c1*a1^2+c2*a2^2     a1*c1       -a2*c2  ;
         -c1             a1*c1               c1          0       ;
         -c2             -a2*c2              0           c2      ];
 K = [   k1+k2           a2*k2-a1*k1         -k1         -k2     ;
@@ -121,7 +184,6 @@ D = zeros(8,2);
 sys = ss(A,B,C,D);
 
 % Input
-vel = 10;                       % Longitudinal speed of the car             [m/s]
 lon_pos_1 = vel*time + a1+a2;   % Longitudinal position of the front axle   [m]
 % OBS: Added wheelbase!
 lon_pos_2 = vel*time;           % Longitudinal position of the rear axle    [m]
