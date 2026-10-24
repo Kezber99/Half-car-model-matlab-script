@@ -58,3 +58,7 @@ Physical vehicle validation is still outstanding. Review the report before using
 ## Iteration log
 
 Use [the offline Excel iteration tracker](docs/Half_Car_Iteration_Tracker.xlsx) to record each run's inputs, outputs, confidence checks, and graph paths. It includes a two-run comparison page, per-bump road records, and header guidance. The example inputs are marked not run and all engineering outputs are blank. See [the tracker guide](docs/ITERATION_TRACKER_GUIDE.md) for the manual recording workflow and sharing graph files.
+
+## Measuring parameters and validating the vehicle
+
+See the [parameter test guide](docs/HALF_CAR_PARAMETER_TEST_GUIDE.md), also available as a [Word document](docs/Half_Car_Parameter_Test_Guide.docx). It covers equipment, measurement procedures, wheel-rate/damping conversions, driver-loaded sprung CG, pitch inertia, sensor processing, sampling, and a staged validation plan. It is a proposed procedure, not a report of completed physical tests.
